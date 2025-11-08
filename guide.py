@@ -74,7 +74,7 @@ def create_startup_script(base_path, startup_folder):
     """
     print("\n--- Creating startup script ---")
     venv_python_path = os.path.join(base_path, "venv", "Scripts", "pythonw.exe")
-    main_script_path = os.path.join(base_path, "demp.py") # Assuming main.py is in the base path
+    main_script_path = os.path.join(base_path, "demo.py") # Assuming main.py is in the base path
     log_file_path = os.path.join(base_path, "logs", "runtime.log")
     
     # Ensure log directory exists
