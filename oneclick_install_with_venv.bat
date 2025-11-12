@@ -19,5 +19,4 @@ if exist %~dp0requirement.txt (
 else (echo "Requirement.txt not exist, exiting")
 
 :last
-Pause
 exit
