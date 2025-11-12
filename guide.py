@@ -73,7 +73,7 @@ def create_startup_script(base_path, startup_folder):
     Creates the .bat script in the startup folder to run the main Python app.
     """
     print("\n--- Creating startup script ---")
-    venv_python_path = os.path.join(base_path, "venv", "Scripts", "pythonw.exe")
+    venv_python_path = os.path.join(base_path, ".venv", "Scripts", "pythonw.exe")
     main_script_path = os.path.join(base_path, "demo.py") # Assuming main.py is in the base path
     log_file_path = os.path.join(base_path, "logs", "runtime.log")
     
