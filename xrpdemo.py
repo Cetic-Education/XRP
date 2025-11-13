@@ -1,88 +1,59 @@
 from XRPLib.defaults import *
-from XRPLib.reflectance import Reflectance
+from XRPLib.imu import IMU
+from XRPLib.encoded_motor import EncodedMotor # For importing ZERO_EFFORT_BRAKE
+from XRPLib.differential_drive import DifferentialDrive
 import sys
 import select
 import time
 
-motor1 = EncodedMotor.get_default_encoded_motor(1)
-motor2 = EncodedMotor.get_default_encoded_motor(2)
+print("Running")
+imu = IMU.get_default_imu()
+drivetrain = DifferentialDrive.get_default_differential_drive()
 
-print ("running")
-    
-def sleep_noblock(ms):
-    start = time.ticks_ms()
-    while time.ticks_ms() - start < ms:
-        pass
-    
-def set_direction_and_speed(dir1, speed1, dir2, speed2):
-    board.led_off()
-    motor1._motor.flip_dir = dir1
-    motor2._motor.flip_dir = dir2
-    motor1.set_speed(speed1)
-    motor2.set_speed(speed2)
-    sleep_noblock(50)
-    board.led_on()
+try:
+    imu.calibrate(1)  
+    imu.reset_yaw()  
+    print("IMU calibrated and reset.")
+except Exception as e:
+    print(f"IMU init error: {e}")
 
-def stop():
-    set_direction_and_speed(True, 0, False, 0)
-    
-def forward(speed = 80):
-    set_direction_and_speed(True, speed, False, speed)
+# drivetrain.set_zero_effort_behavior(EncodedMotor.ZERO_EFFORT_BREAK)
+drivetrain.stop()
 
-def backward(speed = 80):
-    set_direction_and_speed(False, speed, True, speed)
-
-def turn_left(speed = 80):
-    set_direction_and_speed(False, speed, False, speed)
-
-def turn_right(speed = 80):
-    set_direction_and_speed(True, speed, True, speed)
-    
+REPORT_INTERVAL_MS = 50  # 50ms = 20Hz
+last_report_time = time.ticks_ms()
 
 board.led_on()
-last = ''
-while True:
 
-    # Check if there is data to read on stdin
+drivetrain.set_speed(0,0)
+while True:
+    
     if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
         line = sys.stdin.readline().strip()
-        if not line:
-            continue
-
-        parts = line.split(',')
-        command = parts[0]
-        speed = 100 # Default speed if not provided
-        if len(parts) > 1:
+        
+        if line:
+            board.led_off()
             try:
-                speed = int(parts[1])
-            except ValueError:
-                speed = 100 # Fallback to default
+                # [L,speed_cm_s,R,speed_cm_s]'
+                parts = line.split(',')
+                if parts[0] == 'L' and parts[2] == 'R':
+                    left_speed_cm_s = float(parts[1])
+                    right_speed_cm_s = float(parts[3])
+                    drivetrain.set_speed(left_speed_cm_s, right_speed_cm_s)
+                    board.led_on()
+                elif line == 'E':
+                    drivetrain.stop()
+                    break
+                    
+            except Exception as e:
+                drivetrain.stop()
+                print("Error parsing command: {}".format(e))
 
-        if last != command:
-            stop()
-            last = command
-            continue
-        if command == 'W':
-            forward(speed)
-        elif command == 'S':
-            backward(speed)
-        elif command == 'A':
-            turn_left(speed)
-        elif command == 'D':
-            turn_right(speed)
-        elif command == 'X': # 'X' is the new command for stop
-            stop()
-        elif command == 'E': 
-            # line_lost_count = 0
-            # while line_lost_count <= 20:
-            #     if (reflectance.get_left()) <= 0.85 and (reflectance.get_right()) <= 0.85:
-            #         forward(80)
-            #         line_lost_count = 0 # Reset counter when line is found
-            #     else:
-            #         stop()
-            #         line_lost_count += 1
-            #     sleep_noblock(50) # Check sensors more frequently
-            stop()
-            break
+    current_time = time.ticks_ms()
+    if time.ticks_diff(current_time, last_report_time) > REPORT_INTERVAL_MS:
+        last_report_time = current_time
+        
+        print("IMU,{:.2f}\n".format(imu.get_yaw()))
 
-        last = command
+drivetrain.stop()
+board.led_off()
