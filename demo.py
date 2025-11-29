@@ -242,6 +242,12 @@ if __name__ == "__main__":
                 object_bottom_y = y + h
                 offset_x = object_center_x - frame_center_x
                 offset_y = object_bottom_y - reference_line_y
+                true_center_y = y + h // 2
+
+                cv2.circle(frame, (object_center_x, true_center_y), 5, (255, 0, 255), -1)
+
+                cv2.putText(frame, "Center", (object_center_x - 25, true_center_y - 15),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
                 
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                 cv2.line(frame, (object_center_x, 0), (object_center_x, height), (255, 0, 0), 2)
