@@ -21,7 +21,6 @@ COLOR_RANGE = {
 }
 TARGET_COLOR = "green"
 TARGET_SHAPE = "circle"
-SEARCH_TURN_SPEED_CM_S = 5.5
 
 def serial_reader_thread():
     global g_uart, g_current_yaw, g_lock
