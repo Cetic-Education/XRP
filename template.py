@@ -19,6 +19,9 @@ COLOR_RANGE = {
     "yellow": [((20, 43, 46), (30, 255, 255))],
     "purple": [((140, 43, 46), (160, 255, 255))],
 }
+TARGET_COLOR = "green"
+TARGET_SHAPE = "circle"
+SEARCH_TURN_SPEED_CM_S = 5.5
 
 def serial_reader_thread():
     global g_uart, g_current_yaw, g_lock
