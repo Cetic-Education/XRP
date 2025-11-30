@@ -243,6 +243,35 @@ if __name__ == "__main__":
                 offset_x = object_center_x - frame_center_x
                 offset_y = object_bottom_y - reference_line_y
                 true_center_y = y + h // 2
+                
+                # 1. coordinate you want to reach
+                base_pt = (frame_center_x, reference_line_y)
+                # 2. Corner form object to target pt
+                corner_pt = (object_center_x, reference_line_y)
+                # Object bottom
+                end_pt = (object_center_x, object_bottom_y)
+
+                # A. X axis offset
+                cv2.line(frame, base_pt, corner_pt, (255, 0, 0), 3)
+                # B. Y axis offset
+                cv2.line(frame, corner_pt, end_pt, (0, 0, 255), 3)
+                # C. hypotenuse
+                cv2.line(frame, base_pt, end_pt, (0, 255, 255), 1)
+
+                # D. Show offset value
+                # x value in x axis
+                mid_x = (frame_center_x + object_center_x) // 2
+                cv2.putText(frame, f"X:{offset_x}", (mid_x, reference_line_y - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+                
+                # Y value in y axis
+                mid_y = (reference_line_y + object_bottom_y) // 2
+                cv2.putText(frame, f"Y:{offset_y}", (object_center_x + 10, mid_y), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+
+                # Center point for reference
+                cv2.circle(frame, base_pt, 8, (255, 255, 255), -1)
+
 
                 cv2.circle(frame, (object_center_x, true_center_y), 5, (255, 0, 255), -1)
 
