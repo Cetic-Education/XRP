@@ -89,6 +89,8 @@ if __name__ == "__main__":
         ret, frame = cap.read()
         if not ret: break
 
+        frame_center_x = width // 2
+        reference_line_y = int(height * 0.8)
         # [TODO 3] image preprocessing (Blur, HSV)
         
         # [TODO 4] get Mask
