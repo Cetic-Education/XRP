@@ -134,7 +134,8 @@ if __name__ == "__main__":
     
     # 1. Setup Connection
     try:
-        uart = find_uart()
+        # uart = find_uart()
+        pass
     except Exception as e:
         print(f"Connection Error: {e}")
 
