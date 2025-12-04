@@ -3,13 +3,9 @@ import serial
 import time
 import math
 import serial.tools.list_ports
-import threading
 from simple_pid import PID 
 
-g_uart = None
-g_current_yaw = 0.0
-g_lock = threading.Lock()
-g_end = False
+uart = None
 
 COLOR_RANGE = {
     "red": [((0, 43, 46), (10, 255, 255)), ((156, 43, 46), (180, 255, 255))],
@@ -20,52 +16,87 @@ COLOR_RANGE = {
 }
 TARGET_COLOR = "green"
 TARGET_SHAPE = "circle"
-SEARCH_TURN_SPEED_CM_S = 5.5
+SEARCH_TURN_EFFORT = 0.66
+MAX_EFFORT = 0.95
 
-def serial_reader_thread():
-    global g_uart, g_current_yaw, g_lock, g_end
-    print("Serial reader thread started...")
-    while True:
-        try:
-            if g_end == True:
-                    return
-            line = g_uart.readline().decode('utf-8').strip()
-            if line.startswith("IMU,"):
-                parts = line.split(',')
-                if len(parts) == 2:
-                    yaw_value = float(parts[1])
-                    with g_lock:
-                        g_current_yaw = yaw_value
-        except (serial.SerialException, ValueError, AttributeError, TypeError) as e:
-            print(f"Serial reader thread error or stopped. {e}")
-            break
-        except Exception as e:
-            print(f"Serial reader unknown error: {e}")
-
-
-def send_command(left_speed_cm_s, right_speed_cm_s):
-    global g_uart, g_lock
+def send_command(cmd_type, arg1, arg2, timeout=5.0):
+    """
+    Send command to pico
     
-    command_str = f"L,{left_speed_cm_s:.2f},R,{right_speed_cm_s:.2f}\n"
+    參數:
+    - cmd_type: 'A' (Arcade), 'S' (Straight), 'T' (Turn), 'E' (Exit)
+    - arg1: throttle (A), distance (S), degrees (T)
+    - arg2: turn (A), speed (S), speed (T)
+    - timeout: Max second to run command (available for S and T)
+    """
     
+    command_str = ""
+    if cmd_type == 'A':
+        # Arcade: A, throttle, turn
+        command_str = f"A,{arg1:.2f},{arg2:.2f}\n"
+    elif cmd_type == 'S':
+        # Straight: S, distance, speed
+        command_str = f"S,{arg1:.2f},{arg2:.2f}\n"
+    elif cmd_type == 'T':
+        # Turn: T, degrees, speed
+        command_str = f"T,{arg1:.2f},{arg2:.2f}\n"
+    elif cmd_type == 'E':
+        command_str = "E\n"
+    else:
+        print(f"Error: Unknown command type {cmd_type}")
+        return
+
     try:
-        with g_lock:
-            if g_uart and g_uart.is_open:
-                g_uart.write(command_str.encode('utf-8'))
-                # print(f"Sent: {command_str.strip()}")
+        if uart and uart.is_open:
+            if cmd_type in ['S', 'T']:
+                uart.reset_input_buffer()
+
+            uart.write(command_str.encode('utf-8'))
+            if cmd_type == 'A':
+                # check accumulating data
+                if uart.in_waiting > 0:
+                    raw_data = uart.read(uart.in_waiting)
+                    try:
+                        msg = raw_data.decode('utf-8').strip()
+                        if msg:
+                            pass
+                            # print(f"[Pico Feedback]: {msg}")
+                    except:
+                        pass
+
+            if cmd_type in ['S', 'T']:
+                start_time = time.time()
+                
+                while (time.time() - start_time) < timeout:
+                    if uart.in_waiting:
+                        line = uart.readline().decode('utf-8', errors='ignore').strip()
+                        
+                        if "DONE" in line.upper():
+                            # print(f"Command {cmd_type} Completed.") # Debug
+                            return
+                        
+                        if "ERR" in line.upper():
+                            print(f"Warning: Robot returned error for {cmd_type}")
+                            return
+
+                    time.sleep(0.01)
+                
+                print(f"Timeout: Did not receive DONE for command {cmd_type}")
+
     except serial.SerialTimeoutException:
-        print("Write timeout occurred")
+        print("UART Write Timeout")
     except Exception as e:
-        print(f"Error sending command: {e}")
+        print(f"UART Error: {e}")
 
 # Find and connect to the UART device
-def find_uart(baudrate=9600,timeout=1,write_timeout=100):
+def find_uart(baudrate=115200,timeout=1,write_timeout=100):
     ports = serial.tools.list_ports.comports()
     for port in ports:
         try:
             uart = serial.Serial(port.device, baudrate, timeout=timeout, write_timeout=write_timeout)
             time.sleep(2)  # Wait for the connection to establish
             print(f"Connected to UART on {port.device}")
+            uart.reset_input_buffer()
             return uart
         except serial.SerialException:
             continue
@@ -126,7 +157,7 @@ def get_shape_name(contour):
             # when extent is high, we can be more confident about the shape
             # then check aspect ratio
             
-            # 從 rect 中獲取寬高
+            # Get width and height from rect
             (w, h) = rect[1]
             if w > h:
                 w, h = h, w
@@ -149,46 +180,36 @@ def get_shape_name(contour):
 
 if __name__ == "__main__":
     
-    FRAME_WIDTH = 1920
-    FRAME_HEIGHT = 1080
+    FRAME_WIDTH = 640
+    FRAME_HEIGHT = 480
     
     try:
-        g_uart = find_uart()
+        uart = find_uart()
     except serial.SerialException as e:
         print(f"error: {e}")
-        exit(1)
+        # exit(1)
 
 
-    MAX_SPEED_CM_S = 20.0
+    
     
     # PID for Turning (Trying using pid to turn)
     # input: offset_x (from, -960 to +960)
     # output: turn_speed (cm/s, -MAX_SPEED_CM_S to +MAX_SPEED_CM_S)
     # est.: 300 pixels of error -> 10 cm/s turning speed => kp = 10 / 300 = 0.033
     turn_pid = PID(
-        Kp=0.05, Ki=0.09, Kd=0.005, 
+        Kp=0.002, Ki=0.001, Kd=0.0001, 
         setpoint=0, 
-        output_limits=(-MAX_SPEED_CM_S, MAX_SPEED_CM_S)
+        output_limits=(-MAX_EFFORT, MAX_EFFORT)
     )
 
-    # PID for Distance (視覺 PID)
+    # PID for Distance (visual PID)
     # input: offset_y (pixels)
     # output: base_speed (cm/s, -MAX_SPEED_CM_S to +MAX_SPEED_CM_S)
     # est.: 300 pixels of error -> 15 cm/s forward speed => kp = 15 / 300 = 0.05
     distance_pid = PID(
-        Kp=0.05, Ki=0.09, Kd=0.009,
+        Kp=0.002, Ki=0.001, Kd=0.0001,
         setpoint=0,
-        output_limits=(-MAX_SPEED_CM_S, MAX_SPEED_CM_S)
-    )
-
-    # PID for Heading Hold (IMU 航向 PID) 
-    # input: current_yaw (degrees)
-    # output: correction_speed (cm/s, -10 to +10)
-    # est.: 10 degrees of error -> 5 cm/s correction speed => kp = 5 / 10 = 0.5
-    heading_pid = PID(
-        Kp=0.5, Ki=0.1, Kd=0.05, 
-        setpoint=0, # We will set this to the current heading when we start correcting
-        output_limits=(-MAX_SPEED_CM_S / 2, MAX_SPEED_CM_S / 2) # Correction speed doesn't need to be too large
+        output_limits=(-MAX_EFFORT, MAX_EFFORT)
     )
 
     # --- 6.2: Initialize camera ---
@@ -198,13 +219,8 @@ if __name__ == "__main__":
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     out = cv2.VideoWriter('output.avi', fourcc, 20.0, (FRAME_WIDTH, FRAME_HEIGHT))
 
-    # --- 6.3: Start background reading thread ---
-    reader_thread = threading.Thread(target=serial_reader_thread, daemon=True)
-    reader_thread.start()
-
     aligned_frames_counter = 0
     End = False
-    time.sleep(2) # Wait for camera
     while not cap.isOpened():
         time.sleep(0.1)
     
@@ -283,72 +299,39 @@ if __name__ == "__main__":
                 cv2.line(frame, (0, reference_line_y), (width, reference_line_y), (0, 255, 255), 2)
                 break
         
-        # --- PID decision logic ---
-        
-        with g_lock:
-            local_current_yaw = g_current_yaw
 
-        base_speed = 0.0
-        turn_speed = 0.0
+        throttle = 0.0
+        turn = 0.0
 
         if target_found_this_frame:
             # deadzone
             turn_deadzone = 40
             distance_deadzone = 20
 
-            if abs(offset_x) > turn_deadzone:
-                # State 1: Need to turn to align (Vision PID)
-                turn_speed = -turn_pid(offset_x) # Negative because offset_x > 0 (on the right) needs "turn right"
-                
-                # Reset heading PID because we are actively turning
-                # And set the "target heading" to the new heading we have turned to
-                heading_pid.setpoint = local_current_yaw 
-                distance_pid.reset()
-                aligned_frames_counter = 0
-
-            elif abs(offset_y) > distance_deadzone:
-                # 1. Distance PID calculates base forward/backward speed
-                base_speed = distance_pid(offset_y) # Negative because offset_y > 0 (too close) -> move backward
-                
-                # 2. Heading PID calculates correction speed based on "IMU error"
-                correction_speed = heading_pid(local_current_yaw)
-                turn_speed = correction_speed # Turn speed = heading correction speed
-                
-                turn_pid.reset()
-                aligned_frames_counter = 0
+            turn = turn_pid(offset_x)
+            throttle = distance_pid(offset_y)
             
-            else:
-                # State 3: Perfect alignment
-                base_speed = 0.0
-                turn_speed = 0.0
-                # Reset all PIDs
-                turn_pid.reset()
-                heading_pid.reset()
-                distance_pid.reset()
+            scale_factor = 1.0 - min(abs(turn) / MAX_EFFORT, 0.8)
+            throttle *= scale_factor
+            
+            if abs(offset_x) <= turn_deadzone and abs(offset_y) <= distance_deadzone:
+                turn = 0
+                throttle = 0
                 
                 aligned_frames_counter += 1
-                print(f"aligning: {aligned_frames_counter}")
+                print(f"Aligning: {aligned_frames_counter}")
                 if aligned_frames_counter >= 10:
-                    print("Aligned! Sending 'E' command.")
-                    End = True # Trigger end
-                    
+                    print("Aligned! Sending 'E'")
+                    End = True
+            else:
+                aligned_frames_counter = 0
+            send_command('A', throttle, turn)
         else:
-            # State 4: Target not found
-            base_speed = 0.0
-            turn_speed = SEARCH_TURN_SPEED_CM_S
+            send_command('A', 0, SEARCH_TURN_EFFORT) 
             turn_pid.reset()
-            heading_pid.reset()
             distance_pid.reset()
             aligned_frames_counter = 0
             
-        # --- 6.6: Mix and send commands ---
-        
-        if not End:
-            # Mix "forward" and "turn" speeds (differential drive)
-            final_left_speed = base_speed + turn_speed
-            final_right_speed = base_speed - turn_speed
-            
-            send_command(final_left_speed, final_right_speed)
         
         out.write(frame)
         cv2.imshow("Frame", frame) # Open display for debugging
@@ -358,21 +341,18 @@ if __name__ == "__main__":
 
     # --- 6.7: Cleanup ---
     print("Task finished. Exiting.")
-    send_command(0, 0)
+    send_command('E', 0, 0)
     time.sleep(0.1)
-    with g_lock:
-        g_end = True
     
     cap.release()
     out.release()
     cv2.destroyAllWindows()
-    if g_uart and g_uart.is_open:
+    if uart and uart.is_open:
         try:
-            g_uart.write("E\n".encode('utf-8'))
+            uart.write("E\n".encode('utf-8'))
             time.sleep(0.1)
-            reader_thread.join()
         except Exception as e:
             print(f"Error encountered: {e}")
         finally:
-            g_uart.close()
+            uart.close()
             print("UART connection closed.") 
