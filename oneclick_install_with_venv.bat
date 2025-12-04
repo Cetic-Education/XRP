@@ -13,10 +13,10 @@ if exist %~dp0.venv (
     echo "Building venv"
     python -m venv %~dp0.venv)
 :requirement
-if exist %~dp0requirement.txt (
-    echo "Requirement.txt exist, installing"
-    %~dp0.venv\Scripts\pip install -r %~dp0requirement.txt)^
-else (echo "Requirement.txt not exist, exiting")
+if exist %~dp0requirements.txt (
+    echo "Requirements.txt exist, installing"
+    %~dp0.venv\Scripts\pip install -r %~dp0requirements.txt)^
+else (echo "Requirements.txt not exist, exiting")
 
 :last
 exit
