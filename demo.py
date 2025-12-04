@@ -234,6 +234,9 @@ if __name__ == "__main__":
         frame_center_x = width // 2
         reference_line_y = int(height * 0.8)
 
+        cv2.line(frame, (frame_center_x, 0), (frame_center_x, height), (255, 0, 0), 2)       # 垂直中線 (X Axis)
+        cv2.line(frame, (0, reference_line_y), (width, reference_line_y), (0, 255, 255), 2) # 水平目標線 (Y Axis)
+        
         blurred = cv2.GaussianBlur(frame, (7, 7), 0)
         hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
         mask = create_color_mask(hsv, TARGET_COLOR)
@@ -245,60 +248,56 @@ if __name__ == "__main__":
         target_found_this_frame = False
         offset_x = 0
         offset_y = 0
-
+        
+        best_target_contour = None
+        max_area = 0
+        
         for contour in contours:
-            if cv2.contourArea(contour) < 3500:
+            
+            x, y, w, h = cv2.boundingRect(contour)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 1)
+            area = cv2.contourArea(contour)
+            if area < 3500:
                 continue
+            
             shape = get_shape_name(contour)
             
             if shape == TARGET_SHAPE:
-                target_found_this_frame = True
-                x, y, w, h = cv2.boundingRect(contour)
-                object_center_x = x + w // 2
-                object_bottom_y = y + h
-                offset_x = object_center_x - frame_center_x
-                offset_y = object_bottom_y - reference_line_y
-                true_center_y = y + h // 2
-                
-                # 1. coordinate you want to reach
-                base_pt = (frame_center_x, reference_line_y)
-                # 2. Corner form object to target pt
-                corner_pt = (object_center_x, reference_line_y)
-                # Object bottom
-                end_pt = (object_center_x, object_bottom_y)
+                if area > max_area:
+                    max_area = area
+                    best_target_contour = contour
+        if best_target_contour is not None:
+            target_found_this_frame = True
+            
+            # get bounding box and calculate offsets
+            x, y, w, h = cv2.boundingRect(best_target_contour)
+            object_center_x = x + w // 2
+            object_bottom_y = y + h
+            
+            # using green thick box to highlight target
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 3)
 
-                # A. X axis offset
-                cv2.line(frame, base_pt, corner_pt, (255, 0, 0), 3)
-                # B. Y axis offset
-                cv2.line(frame, corner_pt, end_pt, (0, 0, 255), 3)
-                # C. hypotenuse
-                cv2.line(frame, base_pt, end_pt, (0, 255, 255), 1)
+            # calculate offsets
+            offset_x = object_center_x - frame_center_x
+            offset_y = object_bottom_y - reference_line_y
+            
+            # 1. coordinate you want to reach
+            base_pt = (frame_center_x, reference_line_y)
+            # 2. Corner form object to target pt
+            corner_pt = (object_center_x, reference_line_y)
+            # Object bottom
+            end_pt = (object_center_x, object_bottom_y)
+            
+            # display coordinate text
+            cv2.putText(frame, f"X Error: {offset_x}", (x, y - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+            cv2.putText(frame, f"Y Error: {offset_y}", (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)     
+            # A. X axis offset
+            cv2.line(frame, base_pt, corner_pt, (255, 0, 0), 3)
+            # B. Y axis offset
+            cv2.line(frame, corner_pt, end_pt, (0, 0, 255), 3)
+            # C. hypotenuse
+            cv2.line(frame, base_pt, end_pt, (0, 255, 255), 1)
 
-                # D. Show offset value
-                # x value in x axis
-                mid_x = (frame_center_x + object_center_x) // 2
-                cv2.putText(frame, f"X:{offset_x}", (mid_x, reference_line_y - 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-                
-                # Y value in y axis
-                mid_y = (reference_line_y + object_bottom_y) // 2
-                cv2.putText(frame, f"Y:{offset_y}", (object_center_x + 10, mid_y), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-
-                # Center point for reference
-                cv2.circle(frame, base_pt, 8, (255, 255, 255), -1)
-
-
-                cv2.circle(frame, (object_center_x, true_center_y), 5, (255, 0, 255), -1)
-
-                cv2.putText(frame, "Center", (object_center_x - 25, true_center_y - 15),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
-                
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.line(frame, (object_center_x, 0), (object_center_x, height), (255, 0, 0), 2)
-                cv2.line(frame, (0, reference_line_y), (width, reference_line_y), (0, 255, 255), 2)
-                break
-        
 
         throttle = 0.0
         turn = 0.0
