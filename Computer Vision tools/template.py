@@ -26,7 +26,7 @@ SEARCH_TURN_EFFORT = 0.5
 # Helper Functions (Infrastructure)
 # =========================================
 
-def send_command(cmd_type, arg1, arg2, timeout=5.0):
+def send_command(cmd_type, arg1, arg2, timeout=15.0):
     """
     Send command to pico (Driver Code - Provided)
     
@@ -57,7 +57,7 @@ def send_command(cmd_type, arg1, arg2, timeout=5.0):
             
             # Non-blocking read for Arcade to clear buffer
             if cmd_type == 'A':
-                if uart.in_waiting > 0:
+                while uart.in_waiting > 0:
                     raw_data = uart.read(uart.in_waiting)
                     try:
                         msg = raw_data.decode('utf-8').strip()
@@ -277,7 +277,9 @@ if __name__ == "__main__":
             # area = cv2.contourArea(contour)
             # if area < 3500:
             #     continue
+            #endregion
             
+            #region [Determine shape]
             # shape = get_shape_name(contour)
             
             # if shape == TARGET_SHAPE:
@@ -285,8 +287,6 @@ if __name__ == "__main__":
             #         max_area = area
             #         best_target_contour = contour
             #endregion
-            
-            # pass
         
         #If Target Found:
         #       -> Calculate offset_x, offset_y
@@ -361,7 +361,9 @@ if __name__ == "__main__":
             
             # scale_factor = 1.0 - min(abs(turn) / MAX_EFFORT, 0.8)
             # throttle *= scale_factor
+            #endregion
             
+            #region [Stopping Condition]
             # if abs(offset_x) <= turn_deadzone and abs(offset_y) <= distance_deadzone:
             #     turn = 0
             #     throttle = 0
@@ -371,6 +373,9 @@ if __name__ == "__main__":
             #     if aligned_frames_counter >= 10:
             #         print("Aligned! Sending 'E'")
             #         End = True
+            #endregion
+            
+            #region [Send Command]
             # else:
             #     aligned_frames_counter = 0
             # send_command('A', throttle, turn)
