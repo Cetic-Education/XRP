@@ -241,6 +241,7 @@ if __name__ == "__main__":
         #region [answer]
         # blurred = cv2.GaussianBlur(frame, (7, 7), 0)
         # hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+        # mask = create_color_mask(hsv, TARGET_COLOR)
         #endregion
         
         # ---------------------------------------------------------
@@ -252,7 +253,6 @@ if __name__ == "__main__":
         # contours, _ = ... (use your create_color_mask function)
 
         #region [answer]
-        # mask = create_color_mask(hsv, TARGET_COLOR)
         # if mask is None: 
         #     continue
         # contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
