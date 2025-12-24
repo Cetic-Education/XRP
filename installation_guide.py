@@ -116,8 +116,7 @@ if __name__ == "__main__":
 
     # Step 1: Install RustDesk using winget
     if not run_command("winget install --id RustDesk.RustDesk -e --accept-package-agreements --accept-source-agreements", "Installing RustDesk"):
-        print("RustDesk installation failed. Please try installing it manually. Exiting.")
-        sys.exit(1)
+        print("[WARNING] RustDesk installation failed. It might be already installed. Continuing setup...")
 
     # Step 2: Create venv and install requirements
     venv_bat_path = os.path.join(base_path, 'oneclick_install_with_venv.bat')
