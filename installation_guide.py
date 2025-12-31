@@ -106,6 +106,49 @@ START "PythonAppBackgroundTask" /B %PYTHON_EXE_WINDOWLESS% %PYTHON_SCRIPT% >> %L
         print(f"[ERROR] Failed to create startup script: {e}")
         return False
 
+def check_winget():
+    print("\n--- Checking for Winget ---")
+    try:
+        # Run winget --version to check existence. 
+        # Using specific subprocess call to suppress output if we just want to check boolean status
+        subprocess.check_call("winget --version", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("[INFO] Winget is already installed.")
+        return True
+    except subprocess.CalledProcessError:
+        print("[WARNING] Winget not found.")
+        return False
+
+
+def install_winget():
+    print("\n--- Installing Winget (App Installer) ---")
+    # PowerShell command to fetch latest release from GitHub API and install it
+    ps_command = (
+        "$progressPreference = 'SilentlyContinue'; "
+        "Write-Host 'Fetching latest Winget version...'; "
+        "try { "
+        "$latest = Invoke-RestMethod -Uri 'https://api.github.com/repos/microsoft/winget-cli/releases/latest'; "
+        "$url = $latest.assets | Where-Object { $_.name -like '*.msixbundle' } | Select-Object -ExpandProperty browser_download_url; "
+        "$tempPath = $env:TEMP + '\\winget.msixbundle'; "
+        "Write-Host 'Downloading from:' $url; "
+        "Invoke-WebRequest -Uri $url -OutFile $tempPath; "
+        "Write-Host 'Installing package...'; "
+        "Add-AppxPackage -Path $tempPath; "
+        "Remove-Item $tempPath; "
+        "Write-Host 'Winget installation completed.'; "
+        "} catch { "
+        "Write-Error $_.Exception.Message; exit 1 "
+        "}"
+    )
+    
+    # Run the PowerShell command
+    cmd = f'powershell -Command "{ps_command}"'
+    if run_command(cmd, "Installing Winget via PowerShell"):
+        print("[INFO] Refreshing environment variables...")
+        # A workaround to make sure new path is picked up is tricky in the same process,
+        # but usually AppxPackage works immediately for new shells.
+        return True
+    return False
+    
 if __name__ == "__main__":
     print("--- Installation and Setup Script ---")
     if input("This script will install software and configure your system. Continue? (y/n): ").lower() != 'y':
@@ -113,7 +156,14 @@ if __name__ == "__main__":
         sys.exit()
 
     base_path = os.path.dirname(os.path.abspath(__file__))
-
+    
+    if not check_winget():
+        if install_winget():
+            print("[INFO] Winget installed. Note: If the next step fails, please restart this script.")
+            time.sleep(2) # Give system a moment
+        else:
+            print("[ERROR] Failed to install Winget automatically.")
+            
     # Step 1: Install RustDesk using winget
     if not run_command("winget install --id RustDesk.RustDesk -e --accept-package-agreements --accept-source-agreements", "Installing RustDesk"):
         print("[WARNING] RustDesk installation failed. It might be already installed. Continuing setup...")
