@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import winreg
+import time
 
 def run_command(command, description):
     """
