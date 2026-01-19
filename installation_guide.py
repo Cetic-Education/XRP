@@ -44,7 +44,91 @@ def run_command(command, description):
     except Exception as e:
         print(f"\n[ERROR] An unexpected error occurred: {e}")
         return False
+def check_internet():
+    """
+    嘗試 Ping 來確認是否有外網連接。
+    """
+    print("\n--- Checking Internet Connection ---")
+    try:
+        # -n 1: 嘗試一次, -w 3000: 等待 3 秒超時
+        subprocess.check_call("ping -n 1 -w 3000 1.1.1.1", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("[INFO] Internet connection is active.")
+        return True
+    except subprocess.CalledProcessError:
+        print("[WARNING] No internet connection detected.")
+        return False
 
+def connect_wifi(ssid, password):
+    """
+    生成 Wi-Fi XML 設定檔並嘗試連接。
+    僅支援最常見的 WPA2-Personal (AES) 加密方式。
+    """
+    print(f"\n--- Attempting to connect to Wi-Fi: {ssid} ---")
+    
+    # 定義 Wi-Fi Profile 的 XML 模板 (WPA2-PSK)
+    # 注意：這裡假設 keyType 是 passPhrase (密碼)，encryption 是 AES
+    profile_xml = f"""<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+    <name>{ssid}</name>
+    <SSIDConfig>
+        <SSID>
+            <name>{ssid}</name>
+        </SSID>
+    </SSIDConfig>
+    <connectionType>ESS</connectionType>
+    <connectionMode>auto</connectionMode>
+    <MSM>
+        <security>
+            <authEncryption>
+                <authentication>WPA2PSK</authentication>
+                <encryption>AES</encryption>
+                <useOneX>false</useOneX>
+            </authEncryption>
+            <sharedKey>
+                <keyType>passPhrase</keyType>
+                <protected>false</protected>
+                <keyMaterial>{password}</keyMaterial>
+            </sharedKey>
+        </security>
+    </MSM>
+</WLANProfile>"""
+
+    # 1. 將 XML 寫入暫存檔案
+    xml_filename = "wifi_temp_config.xml"
+    try:
+        with open(xml_filename, "w", encoding="utf-8") as f:
+            f.write(profile_xml)
+        
+        # 2. 加入 Profile 到系統
+        # netsh wlan add profile filename="wifi_temp_config.xml"
+        add_cmd = f'netsh wlan add profile filename="{xml_filename}"'
+        if not run_command(add_cmd, "Adding Wi-Fi Profile"):
+            return False
+
+        # 3. 執行連線
+        # netsh wlan connect name="SSID"
+        connect_cmd = f'netsh wlan connect name="{ssid}"'
+        run_command(connect_cmd, "Connecting to Wi-Fi")
+
+        # 4. 等待幾秒讓 DHCP 分配 IP
+        print("[INFO] Waiting for connection to establish...")
+        time.sleep(10) # 等待 10 秒
+
+        # 5. 清理 XML 檔案
+        if os.path.exists(xml_filename):
+            os.remove(xml_filename)
+
+        # 6. 再次檢查網絡
+        if check_internet():
+            print(f"[SUCCESS] Successfully connected to {ssid}!")
+            return True
+        else:
+            print(f"[ERROR] Connected to Wi-Fi but still no internet access.")
+            return False
+
+    except Exception as e:
+        print(f"[ERROR] Failed to set up Wi-Fi: {e}")
+        return False
 
 def execute_bat(bat_file_path):
     """
@@ -155,7 +239,24 @@ if __name__ == "__main__":
     if input("This script will install software and configure your system. Continue? (y/n): ").lower() != 'y':
         print("Aborted by user.")
         sys.exit()
-
+        
+    if not check_internet():
+        print("\n[!] Internet is required for installation (Winget/RustDesk).")
+        print("Would you like to configure Wi-Fi now?")
+        choice = input("Enter 'y' to setup Wi-Fi, or any other key to retry/skip: ").lower()
+        
+        if choice == 'y':
+            target_ssid = "ceticfoundation.org"
+            target_pw = "intelcrossxrp"
+            
+            if connect_wifi(target_ssid, target_pw):
+                print("\n[INFO] Internet connected. Proceeding with installation...")
+            else:
+                print("\n[ERROR] Could not connect to internet. Winget installation may fail.")
+                if input("Continue anyway? (y/n): ").lower() != 'y':
+                    sys.exit()
+        else:
+            print("[WARNING] Proceeding without verified internet connection.")
     base_path = os.path.dirname(os.path.abspath(__file__))
     
     if not check_winget():
