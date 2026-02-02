@@ -89,7 +89,7 @@ def send_command(cmd_type, arg1, arg2, timeout=5.0):
         print(f"UART Error: {e}")
 
 # Find and connect to the UART device
-def find_uart(baudrate=115200,timeout=1,write_timeout=100):
+def find_uart(baudrate=115200,timeout=1,write_timeout=1):
     ports = serial.tools.list_ports.comports()
     for port in ports:
         try:
@@ -187,6 +187,7 @@ if __name__ == "__main__":
         uart = find_uart()
     except serial.SerialException as e:
         print(f"error: {e}")
+        uart = None
         # exit(1)
 
 
