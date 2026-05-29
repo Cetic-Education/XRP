@@ -255,10 +255,27 @@ if __name__ == "__main__":
     else:
         print(f"\n[INFO] Found existing installer at {installer_path}. Skipping download.")
 
-    # 執行靜默安裝
+
+    # 執行靜默安裝：捨棄 PIPE 捕獲，阻斷孫進程死鎖
+    print(f"\n--- Installing RustDesk (Silent Mode) ---")
     install_cmd = f'"{installer_path}" --silent-install'
-    if not run_command(install_cmd, "Installing RustDesk (Silent Mode)"):
-        print("[WARNING] RustDesk installation returned an error. It may already be installed or requires administrator privileges.")
+    try:
+        # 採用標準 run 且將輸出導向 DEVNULL，避免背景 daemon 綁架 stdout
+        subprocess.run(
+            install_cmd,
+            shell=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True
+        )
+        print("[SUCCESS] Installing RustDesk (Silent Mode) completed successfully.")
+        
+        # 暴力終止可能殘留且阻礙後續操作的 RustDesk 安裝時啟動的臨時背景處理程序
+        # 這能確保安裝環節乾淨俐落，不會有僵屍進程拖慢系統
+        subprocess.run("taskkill /F /IM rustdesk.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+    except subprocess.CalledProcessError as e:
+        print(f"[WARNING] RustDesk installation returned exit code {e.returncode}. It may already be installed or requires administrator privileges.")
 
     # Step 2: Create venv and install requirements
     venv_bat_path = os.path.join(base_path, 'oneclick_install_with_venv.bat')
