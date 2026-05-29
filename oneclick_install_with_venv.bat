@@ -1,6 +1,6 @@
 echo off
 echo "Building venv in current, please ensure python can be used in command line \nVenv will be installed at current bat location, press y to continue process"
-choice /c YN /M "press Y to continue process, N to exit" /t 10 /d N
+choice /c YN /M "press Y to continue process, N to exit" /t 120 /d N
 @if %errorlevel% == 2 exit
 @if %errorlevel% == 1 goto next
 pause
