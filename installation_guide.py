@@ -3,6 +3,7 @@ import subprocess
 import sys
 import winreg
 import time
+import urllib.request # 引入標準網路請求庫，避免第三方相依性
 
 def run_command(command, description):
     """
@@ -44,6 +45,7 @@ def run_command(command, description):
     except Exception as e:
         print(f"\n[ERROR] An unexpected error occurred: {e}")
         return False
+
 def check_internet():
     """
     嘗試 Ping 來確認是否有外網連接。
@@ -66,7 +68,6 @@ def connect_wifi(ssid, password):
     print(f"\n--- Attempting to connect to Wi-Fi: {ssid} ---")
     
     # 定義 Wi-Fi Profile 的 XML 模板 (WPA2-PSK)
-    # 注意：這裡假設 keyType 是 passPhrase (密碼)，encryption 是 AES
     profile_xml = f"""<?xml version="1.0"?>
 <WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
     <name>{ssid}</name>
@@ -100,13 +101,11 @@ def connect_wifi(ssid, password):
             f.write(profile_xml)
         
         # 2. 加入 Profile 到系統
-        # netsh wlan add profile filename="wifi_temp_config.xml"
         add_cmd = f'netsh wlan add profile filename="{xml_filename}"'
         if not run_command(add_cmd, "Adding Wi-Fi Profile"):
             return False
 
         # 3. 執行連線
-        # netsh wlan connect name="SSID"
         connect_cmd = f'netsh wlan connect name="{ssid}"'
         run_command(connect_cmd, "Connecting to Wi-Fi")
 
@@ -128,6 +127,32 @@ def connect_wifi(ssid, password):
 
     except Exception as e:
         print(f"[ERROR] Failed to set up Wi-Fi: {e}")
+        return False
+
+def download_binary(url, dest_path):
+    """
+    透過 urllib 進行二進位檔案直連下載。
+    注入標準 User-Agent 避免被雲端硬碟的防爬蟲機制阻擋。
+    """
+    print(f"\n--- Downloading file from {url} ---")
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        with urllib.request.urlopen(req) as response:
+            total_size = int(response.info().get('Content-Length', 0))
+            print(f"[INFO] File size: {total_size / (1024 * 1024):.2f} MB")
+            
+            with open(dest_path, 'wb') as out_file:
+                # 使用 8192 Bytes 的 Chunk 大小來穩定寫入磁碟，減少 I/O 擁塞
+                while True:
+                    chunk = response.read(8192)
+                    if not chunk:
+                        break
+                    out_file.write(chunk)
+                    
+        print(f"[SUCCESS] File downloaded successfully to {dest_path}")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to download binary: {e}")
         return False
 
 def execute_bat(bat_file_path):
@@ -191,49 +216,6 @@ START "PythonAppBackgroundTask" /B %PYTHON_EXE_WINDOWLESS% %PYTHON_SCRIPT% >> %L
         print(f"[ERROR] Failed to create startup script: {e}")
         return False
 
-def check_winget():
-    print("\n--- Checking for Winget ---")
-    try:
-        # Run winget --version to check existence. 
-        # Using specific subprocess call to suppress output if we just want to check boolean status
-        subprocess.check_call("winget --version", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("[INFO] Winget is already installed.")
-        return True
-    except subprocess.CalledProcessError:
-        print("[WARNING] Winget not found.")
-        return False
-
-
-def install_winget():
-    print("\n--- Installing Winget (App Installer) ---")
-    # PowerShell command to fetch latest release from GitHub API and install it
-    ps_command = (
-        "$progressPreference = 'SilentlyContinue'; "
-        "Write-Host 'Fetching latest Winget version...'; "
-        "try { "
-        "$latest = Invoke-RestMethod -Uri 'https://api.github.com/repos/microsoft/winget-cli/releases/latest'; "
-        "$url = $latest.assets | Where-Object { $_.name -like '*.msixbundle' } | Select-Object -ExpandProperty browser_download_url; "
-        "$tempPath = $env:TEMP + '\\winget.msixbundle'; "
-        "Write-Host 'Downloading from:' $url; "
-        "Invoke-WebRequest -Uri $url -OutFile $tempPath; "
-        "Write-Host 'Installing package...'; "
-        "Add-AppxPackage -Path $tempPath; "
-        "Remove-Item $tempPath; "
-        "Write-Host 'Winget installation completed.'; "
-        "} catch { "
-        "Write-Error $_.Exception.Message; exit 1 "
-        "}"
-    )
-    
-    # Run the PowerShell command
-    cmd = f'powershell -Command "{ps_command}"'
-    if run_command(cmd, "Installing Winget via PowerShell"):
-        print("[INFO] Refreshing environment variables...")
-        # A workaround to make sure new path is picked up is tricky in the same process,
-        # but usually AppxPackage works immediately for new shells.
-        return True
-    return False
-    
 if __name__ == "__main__":
     print("--- Installation and Setup Script ---")
     if input("This script will install software and configure your system. Continue? (y/n): ").lower() != 'y':
@@ -241,7 +223,7 @@ if __name__ == "__main__":
         sys.exit()
         
     if not check_internet():
-        print("\n[!] Internet is required for installation (Winget/RustDesk).")
+        print("\n[!] Internet is required for installation (RustDesk payload download).")
         print("Would you like to configure Wi-Fi now?")
         choice = input("Enter 'y' to setup Wi-Fi, or any other key to retry/skip: ").lower()
         
@@ -252,23 +234,31 @@ if __name__ == "__main__":
             if connect_wifi(target_ssid, target_pw):
                 print("\n[INFO] Internet connected. Proceeding with installation...")
             else:
-                print("\n[ERROR] Could not connect to internet. Winget installation may fail.")
+                print("\n[ERROR] Could not connect to internet. Installation may fail.")
                 if input("Continue anyway? (y/n): ").lower() != 'y':
                     sys.exit()
         else:
             print("[WARNING] Proceeding without verified internet connection.")
+            
     base_path = os.path.dirname(os.path.abspath(__file__))
     
-    if not check_winget():
-        if install_winget():
-            print("[INFO] Winget installed. Note: If the next step fails, please restart this script.")
-            time.sleep(2) # Give system a moment
-        else:
-            print("[ERROR] Failed to install Winget automatically.")
-            
-    # Step 1: Install RustDesk using winget
-    if not run_command("winget install --id RustDesk.RustDesk -e --accept-package-agreements --accept-source-agreements", "Installing RustDesk"):
-        print("[WARNING] RustDesk installation failed. It might be already installed. Continuing setup...")
+    # Step 1: Download and Install RustDesk directly via .exe
+    installer_filename = "rustdesk-1.4.6-x86_64.exe"
+    installer_path = os.path.join(base_path, installer_filename)
+    rustdesk_url = "https://cloud.cetic.education/s/njW8QDBrKd5ox9Y/download"
+    
+    # 檢測當前目錄是否已經存在安裝檔，避免重複耗時下載
+    if not os.path.exists(installer_path):
+        if not download_binary(rustdesk_url, installer_path):
+            print("[ERROR] RustDesk installer download failed. Aborting setup.")
+            sys.exit(1)
+    else:
+        print(f"\n[INFO] Found existing installer at {installer_path}. Skipping download.")
+
+    # 執行靜默安裝
+    install_cmd = f'"{installer_path}" --silent-install'
+    if not run_command(install_cmd, "Installing RustDesk (Silent Mode)"):
+        print("[WARNING] RustDesk installation returned an error. It may already be installed or requires administrator privileges.")
 
     # Step 2: Create venv and install requirements
     venv_bat_path = os.path.join(base_path, 'oneclick_install_with_venv.bat')
