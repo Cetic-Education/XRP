@@ -270,10 +270,6 @@ if __name__ == "__main__":
         )
         print("[SUCCESS] Installing RustDesk (Silent Mode) completed successfully.")
         
-        # 暴力終止可能殘留且阻礙後續操作的 RustDesk 安裝時啟動的臨時背景處理程序
-        # 這能確保安裝環節乾淨俐落，不會有僵屍進程拖慢系統
-        subprocess.run("taskkill /F /IM rustdesk.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
     except subprocess.CalledProcessError as e:
         print(f"[WARNING] RustDesk installation returned exit code {e.returncode}. It may already be installed or requires administrator privileges.")
 
