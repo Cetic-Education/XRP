@@ -1,3 +1,4 @@
 pyserial
 opencv-python
 simple-pid
+ultralytics
