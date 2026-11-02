@@ -64,8 +64,6 @@ else
 
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}[SUCCESS] Python 3.10 installed successfully!${NC}"
-        # 重新鏈接以確保可被呼叫 (非必要，但在某些環境有幫助)
-        # brew link python@3.10 --force
     else
         echo -e "${RED}[ERROR] Homebrew failed to install Python.${NC}"
         exit 1
@@ -82,7 +80,6 @@ if [ -d ".venv" ]; then
     echo "Virtual environment already exists."
 else
     echo "Creating virtual environment..."
-    # 強制使用 python3.10 建立 venv
     $TARGET_PY -m venv .venv
     
     if [ $? -ne 0 ]; then
@@ -101,16 +98,43 @@ echo -e "[3/3] Installing Requirements..."
 REQ_FILE=""
 if [ -f "requirements.txt" ]; then
     REQ_FILE="requirements.txt"
+elif [ -f "Software/requirements.txt" ]; then
+    REQ_FILE="Software/requirements.txt"
 elif [ -f "requirement.txt" ]; then
     REQ_FILE="requirement.txt"
 fi
 
+CHINA_CHOICE=""
+if [[ "$1" == "--china" || "$2" == "--china" ]]; then
+    CHINA_CHOICE="y"
+elif [[ "$1" == "--default" || "$2" == "--default" ]]; then
+    CHINA_CHOICE="n"
+elif [ -n "$XRP_CHINA_MIRROR" ]; then
+    if [ "$XRP_CHINA_MIRROR" = "1" ]; then
+        CHINA_CHOICE="y"
+    else
+        CHINA_CHOICE="n"
+    fi
+fi
+
+if [ -z "$CHINA_CHOICE" ]; then
+    echo ""
+    read -r -p "Are you located in China? Use Tsinghua PyPI mirror? [y/N]: " CHINA_CHOICE
+fi
+
+PIP_INDEX_OPT=""
+if [[ "$CHINA_CHOICE" =~ ^[Yy]$ ]]; then
+    echo -e "${GREEN}[INFO] Configuring Tsinghua PyPI mirror...${NC}"
+    ./.venv/bin/pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple > /dev/null 2>&1
+    PIP_INDEX_OPT="-i https://pypi.tuna.tsinghua.edu.cn/simple"
+else
+    echo -e "${YELLOW}[INFO] Retaining default PyPI index.${NC}"
+fi
+
 if [ -n "$REQ_FILE" ]; then
     echo "Installing libraries from $REQ_FILE..."
-    
-    # 注意：Mac 上 venv 的路徑是 bin 且沒有副檔名
-    ./.venv/bin/pip install --upgrade pip > /dev/null 2>&1
-    ./.venv/bin/pip install -r "$REQ_FILE"
+    ./.venv/bin/pip install --upgrade pip $PIP_INDEX_OPT > /dev/null 2>&1
+    ./.venv/bin/pip install $PIP_INDEX_OPT -r "$REQ_FILE"
     
     if [ $? -eq 0 ]; then
         echo ""
@@ -129,5 +153,6 @@ else
 fi
 
 # 保持視窗開啟 (如果是雙擊執行的話)
-# 如果是在終端機手動執行，這行是非必要的，但為了模仿 pause 效果：
-read -p "Press any key to exit..."
+if [ -t 0 ]; then
+    read -r -p "Press enter to exit..."
+fi

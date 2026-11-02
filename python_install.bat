@@ -113,8 +113,10 @@ exit
 echo.
 echo [2/3] Checking Virtual Environment (.venv)...
 
-if exist ".venv" (
+if exist ".venv\Scripts\python.exe" (
     echo Virtual environment already exists.
+) else if exist ".venv" (
+    echo Virtual environment folder exists.
 ) else (
     echo Creating virtual environment...
     python -m venv .venv
@@ -135,12 +137,41 @@ echo [3/3] Installing Requirements...
 
 set "REQ_FILE="
 if exist "requirements.txt" set "REQ_FILE=requirements.txt"
+if exist "Software\requirements.txt" set "REQ_FILE=Software\requirements.txt"
 if exist "requirement.txt" set "REQ_FILE=requirement.txt"
+
+set "PIP_INDEX_OPT="
+set "CHINA_CHOICE="
+
+if "%1"=="--china" set "CHINA_CHOICE=Y"
+if "%2"=="--china" set "CHINA_CHOICE=Y"
+if "%3"=="--china" set "CHINA_CHOICE=Y"
+if "%1"=="--default" set "CHINA_CHOICE=N"
+if "%2"=="--default" set "CHINA_CHOICE=N"
+if "%3"=="--default" set "CHINA_CHOICE=N"
+if not defined CHINA_CHOICE if defined XRP_CHINA_MIRROR (
+    if "%XRP_CHINA_MIRROR%"=="1" set "CHINA_CHOICE=Y"
+    if "%XRP_CHINA_MIRROR%"=="0" set "CHINA_CHOICE=N"
+)
+
+if not defined CHINA_CHOICE (
+    echo.
+    set "CHINA_CHOICE=N"
+    set /p "CHINA_CHOICE=Are you located in China? Use Tsinghua PyPI mirror? [y/N]: "
+)
+
+if /i "!CHINA_CHOICE!"=="y" (
+    echo [INFO] Configuring Tsinghua PyPI mirror...
+    .venv\Scripts\pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple >nul 2>&1
+    set "PIP_INDEX_OPT=-i https://pypi.tuna.tsinghua.edu.cn/simple"
+) else (
+    echo [INFO] Retaining default PyPI index.
+)
 
 if defined REQ_FILE (
     echo Installing libraries from !REQ_FILE!...
-    .venv\Scripts\python.exe -m pip install --upgrade pip >nul 2>&1
-    .venv\Scripts\pip install -r !REQ_FILE!
+    .venv\Scripts\python.exe -m pip install --upgrade pip !PIP_INDEX_OPT! >nul 2>&1
+    .venv\Scripts\pip install !PIP_INDEX_OPT! -r !REQ_FILE!
     
     if !errorlevel! equ 0 (
         echo.

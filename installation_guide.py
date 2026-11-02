@@ -4,6 +4,7 @@ import sys
 import winreg
 import time
 import urllib.request # 引入標準網路請求庫，避免第三方相依性
+from typing import Callable, Dict, List, Optional, Tuple
 
 def run_command(command, description):
     """
@@ -184,7 +185,7 @@ def create_startup_script(base_path, startup_folder):
     """
     print("\n--- Creating startup script ---")
     venv_python_path = os.path.join(base_path, ".venv", "Scripts", "pythonw.exe")
-    main_script_path = os.path.join(base_path, "demo.py") # Assuming main.py is in the base path
+    main_script_path = os.path.join(base_path, "Software", "demos", "cv_movement_demo.py")
     log_file_path = os.path.join(base_path, "logs", "runtime.log")
     
     # Ensure log directory exists
@@ -216,12 +217,70 @@ START "PythonAppBackgroundTask" /B %PYTHON_EXE_WINDOWLESS% %PYTHON_SCRIPT% >> %L
         print(f"[ERROR] Failed to create startup script: {e}")
         return False
 
+
+def resolve_mirror_preference(
+    argv: Optional[List[str]] = None,
+    env: Optional[Dict[str, str]] = None,
+    user_input_func: Optional[Callable[[], str]] = None,
+    user_input_prompt: Optional[Callable[[], str]] = None,
+) -> Tuple[bool, str]:
+    """
+    Resolve whether to use the Tsinghua PyPI mirror based on CLI args,
+    environment variables, or user input.
+
+    Precedence:
+      1. Explicit CLI arguments: '--china' (True) or '--default' (False).
+      2. Environment variable 'XRP_CHINA_MIRROR': '1' (True) or '0' (False).
+      3. Interactive prompt [y/N] via user_input_func. Default is False.
+
+    Returns:
+      (use_china_mirror: bool, mirror_flag: str)
+      where mirror_flag is '--china --yes' or '--default --yes'.
+    """
+    args = argv if argv is not None else sys.argv
+    environ = env if env is not None else os.environ
+    callback = user_input_func if user_input_func is not None else user_input_prompt
+
+    if "--china" in args:
+        use_china_mirror = True
+    elif "--default" in args:
+        use_china_mirror = False
+    elif environ.get("XRP_CHINA_MIRROR") is not None:
+        use_china_mirror = (environ.get("XRP_CHINA_MIRROR") == "1")
+    elif callback is not None:
+        china_resp = str(callback()).strip().lower()
+        use_china_mirror = (china_resp in ["y", "yes", "true", "1"])
+    else:
+        use_china_mirror = False
+
+    if use_china_mirror:
+        mirror_flag = "--china --yes"
+    else:
+        mirror_flag = "--default --yes"
+    return use_china_mirror, mirror_flag
+
+
 if __name__ == "__main__":
     print("--- Installation and Setup Script ---")
-    if input("This script will install software and configure your system. Continue? (y/n): ").lower() != 'y':
-        print("Aborted by user.")
-        sys.exit()
-        
+    if "--yes" not in sys.argv:
+        if input("This script will install software and configure your system. Continue? (y/n): ").lower() != 'y':
+            print("Aborted by user.")
+            sys.exit()
+
+    # Check region / Tsinghua mirror option
+    use_china_mirror, mirror_flag = resolve_mirror_preference(
+        argv=sys.argv,
+        env=os.environ,
+        user_input_func=lambda: input("Are you located in China? Use Tsinghua PyPI mirror? [y/N]: "),
+    )
+
+    if use_china_mirror:
+        os.environ["XRP_CHINA_MIRROR"] = "1"
+        print("[INFO] Selected Tsinghua PyPI mirror.")
+    else:
+        os.environ["XRP_CHINA_MIRROR"] = "0"
+        print("[INFO] Retaining default PyPI mirror.")
+
     if not check_internet():
         print("\n[!] Internet is required for installation (RustDesk payload download).")
         print("Would you like to configure Wi-Fi now?")
@@ -275,7 +334,7 @@ if __name__ == "__main__":
 
     # Step 2: Create venv and install requirements
     venv_bat_path = os.path.join(base_path, 'oneclick_install_with_venv.bat')
-    if not execute_bat(venv_bat_path):
+    if not run_command(f'"{venv_bat_path}" {mirror_flag}', "Executing venv and dependency installer"):
         print("Virtual environment setup failed. Please check 'oneclick_install_with_venv.bat'. Exiting.")
         sys.exit(1)
 
